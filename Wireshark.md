@@ -471,3 +471,138 @@ dns.a == 1.2.3.4                         responses with that A record
 dns.count.answers > 10
 mdns || llmnr || nbns                    local name resolution traffic
 ```
+
+### HTTP
+
+```text
+http.request                                         all requests
+http.response                                        all responses
+http.request.method == "GET"
+http.request.method == "POST"
+http.host == "example.com"
+http.host contains "malicious"
+http.request.uri contains "login"
+http.request.full_uri contains "admin"
+http.user_agent contains "curl"
+http.user_agent contains "python"                    scripted clients
+http.response.code == 200
+http.response.code == 404
+http.response.code >= 400
+http.response.code == 401                            auth required/failed
+http.response.code == 403
+http.referer contains "evil"
+http.cookie
+http.authorization                                   Authorization header (Basic auth is base64!)
+http.content_type contains "application/x-msdownload"   Windows executables
+http.content_type contains "octet-stream"
+http.file_data contains "This program cannot be run in DOS mode"   PE file in body
+http.request.uri matches "(?i)(union.+select|<script|\.\./)"   SQLi/XSS/traversal hints
+http.content_length > 1000000
+```
+
+### TLS / HTTPS
+
+```text
+tls                                                  all TLS
+tls.handshake.type == 1                              Client Hello
+tls.handshake.type == 2                              Server Hello
+tls.handshake.type == 11                             Certificate
+tls.handshake.extensions_server_name                 SNI present
+tls.handshake.extensions_server_name contains "evil"
+tls.handshake.version == 0x0303                      TLS 1.2 in handshake
+tls.record.version == 0x0301                         old TLS 1.0 records
+tls.alert_message                                    TLS alerts (errors)
+x509ce.dNSName contains "example"                    names in certificate
+tls.handshake.ja3                                    JA3 fingerprint (available in recent versions)
+```
+
+> In TLS 1.3 the certificate is encrypted, so you won't see it in the handshake. SNI in the Client Hello is usually still visible (unless ECH is used).
+
+### SMB / Windows / AD
+
+```text
+smb || smb2                                  SMB traffic
+smb2.cmd == 5                                Create (file open)
+smb2.cmd == 3                                Tree Connect
+smb2.tree contains "IPC$"                    IPC share
+smb2.tree contains "ADMIN$"                  admin share (lateral movement indicator)
+smb2.filename contains ".exe"
+smb2.nt_status == 0xc000006d                 logon failure
+smb2.nt_status != 0                          any SMB error
+dcerpc                                       RPC calls
+svcctl                                       Service Control (remote service creation)
+ntlmssp                                      NTLM authentication
+ntlmssp.auth.username
+kerberos                                     Kerberos traffic
+kerberos.CNameString                         username in Kerberos
+kerberos.error_code                          Kerberos errors
+ldap                                         LDAP queries
+dcerpc.cn_bind_to_uuid                       RPC interface bound (research UUID meaning)
+```
+
+### Email / FTP / Telnet / SSH / others
+
+```text
+ftp                                          FTP
+ftp.request.command == "USER"
+ftp.request.command == "PASS"                cleartext FTP password
+ftp.response.code == 530                     login failed
+ftp.response.code == 230                     login success
+telnet                                       cleartext remote shell
+smtp                                         email sending
+smtp.req.command == "AUTH"
+imf                                          email message content (Internet Message Format)
+pop                                          POP3
+imap                                         IMAP
+ssh                                          SSH (encrypted, but banners visible)
+ssh.protocol                                 SSH version banner
+rdp                                          Remote Desktop
+dhcp                                         DHCP (older versions used "bootp")
+dhcp.option.dhcp == 1                        DHCP Discover
+dhcp.option.dhcp == 2                        DHCP Offer (check for multiple servers)
+dhcp.option.hostname                         device hostnames
+snmp                                         SNMP
+ntp                                          NTP
+tftp                                         TFTP
+syslog                                       Syslog
+```
+
+---
+
+## 8. Right-Click Menu and Filter Building
+
+You rarely need to type filters from scratch. Click a field and let Wireshark build the filter.
+
+### Packet details: right-click a field
+
+| Option | What it does |
+|---|---|
+| **Apply as Filter > Selected** | Filters instantly on that field's value |
+| **Apply as Filter > Not Selected** | Filters out that value |
+| **...and Selected / ...or Selected** | Adds to the existing filter with AND/OR |
+| **...and not Selected / ...or not Selected** | Adds a negation |
+| **Prepare as Filter** | Same options but **only types it in the bar** so you can edit before applying |
+| **Apply as Column** | Adds that field as a packet list column |
+| **Conversation Filter** | Filter for the conversation (Ethernet, IP, TCP, UDP...) |
+| **Follow** | Follow TCP/UDP/TLS/HTTP stream |
+| Copy > Value / Field Name / As Filter | Copy pieces |
+| Expand / Collapse Subtrees | Navigate the tree |
+| Protocol Preferences | Per-protocol settings |
+| Decode As | Force different decoding for this port |
+
+### Packet list: right-click a packet
+
+| Option | What it does |
+|---|---|
+| Mark / Ignore Packet | Highlight or exclude |
+| Set Time Reference | Reset relative time |
+| Packet Comment | Add a note |
+| Colorize Conversation | Temporarily color a conversation |
+| Show Packet in New Window | Detached view |
+| Export Packet Bytes | Save raw bytes |
+
+### Filter workflow tip
+
+Click a field > **Prepare as Filter** > edit > Enter. This teaches you field names while you work.
+
+---
