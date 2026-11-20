@@ -606,3 +606,296 @@ You rarely need to type filters from scratch. Click a field and let Wireshark bu
 Click a field > **Prepare as Filter** > edit > Enter. This teaches you field names while you work.
 
 ---
+
+## 9. Customizing: Columns, Time, Colors, Profiles
+
+### Time display format (View > Time Display Format)
+
+| Format | Use for |
+|---|---|
+| Date and Time of Day | Matching to logs and SIEM events |
+| **UTC Date and Time of Day** | Best for investigations and reports (avoids timezone confusion) |
+| Seconds Since Beginning of Capture | Timeline within the pcap |
+| **Seconds Since Previous Displayed Packet** | Spotting beaconing and delays in a filtered view |
+| Seconds Since Previous Captured Packet | Gaps in raw capture |
+
+> When correlating with SIEM or firewall logs, set UTC and confirm the capture device's clock was accurate.
+
+### Useful columns (right-click a field > Apply as Column)
+
+| Column | Field |
+|---|---|
+| Source port / Dest port | `tcp.srcport`, `tcp.dstport` |
+| Stream index | `tcp.stream` |
+| DNS query name | `dns.qry.name` |
+| HTTP host and URI | `http.host`, `http.request.uri` |
+| TLS SNI | `tls.handshake.extensions_server_name` |
+| User-Agent | `http.user_agent` |
+| TCP delta time | `tcp.time_delta` |
+| Frame length | `frame.len` |
+
+Set **Preferences > Appearance > Columns** to reorder or rename.
+
+### Name resolution (View > Name Resolution)
+
+| Type | Does | Caution |
+|---|---|---|
+| MAC | Vendor names from OUI | Safe, helpful |
+| Network | Reverse DNS lookups on IPs | **Generates DNS traffic** and can tip off attackers; keep OFF for investigations |
+| Transport | Port names (`443` → `https`) | Can hide the real port number; often turn off |
+
+### Coloring rules (View > Coloring Rules)
+
+Add your own: e.g. highlight `dns.flags.rcode == 3` in orange, `http.response.code >= 400` in yellow, traffic to a suspect IP in red. Rules are evaluated top to bottom.
+
+### Configuration profiles (Edit > Configuration Profiles)
+
+A profile stores columns, filters, colors, and preferences. Make separate profiles:
+
+* **Default**: general use
+* **SOC-Triage**: UTC time, `ip.src`, `ip.dst`, ports, protocol, DNS name, HTTP host, SNI, no name resolution
+* **Troubleshooting**: TCP delta times, window sizes, expert coloring
+* **Classroom/Lab**: whatever you need while practicing
+
+Switch profiles by clicking the profile name in the status bar.
+
+---
+
+## 10. Following Streams and Navigating
+
+### Follow stream (Analyze > Follow, or right-click)
+
+| Option | Shortcut | Use |
+|---|---|---|
+| **Follow TCP Stream** | Ctrl+Alt+Shift+T | Reassembles the entire conversation (HTTP, FTP, Telnet, SMTP, reverse shells) |
+| Follow UDP Stream | Ctrl+Alt+Shift+U | DNS, syslog, custom UDP protocols |
+| Follow TLS Stream | Ctrl+Alt+Shift+S | Decrypted TLS (needs keys) |
+| Follow HTTP Stream | Ctrl+Alt+Shift+H | HTTP conversation |
+
+In the follow window:
+
+* **Red** text = client to server; **blue** = server to client (default colors).
+* Dropdown at bottom: ASCII, Hex Dump, Raw, YAML, etc.
+* **Stream** spinner at bottom switches between streams.
+* **Filter Out This Stream** removes it from the main view.
+* **Save as...** exports the stream content.
+* Closing the window **keeps the filter** (`tcp.stream eq N`) applied in the main window. Clear it when done.
+
+### Find Packet (Ctrl+F)
+
+Search by: **Display filter**, **Hex value**, **String** (in packet list, details, or bytes), or **Regex**. Choose case-sensitivity and character encoding (narrow/wide for Windows strings).
+
+### Time reference and marking
+
+* **Ctrl+T** on a packet sets time reference (`*REF*`); following packets show time relative to it. Useful to time an event chain (e.g., download → execution → C2 beacon).
+* **Ctrl+M** marks packets; marked packets appear black by default. Use "Next/Previous Mark" to jump. Export only marked packets via File > Export Specified Packets.
+
+### Packet comments
+
+Add analyst notes (Edit > Packet Comment). Stored in pcapng, visible in Expert Info > Comment. Good for handing a pcap to a colleague.
+
+---
+
+## 11. Statistics Menu Explained
+
+This menu is the fastest way to understand an unknown capture.
+
+| Tool | What it tells you | When to use |
+|---|---|---|
+| **Capture File Properties** | Hash, time span, packet count, OS/interface info, comments | First look at any pcap; evidence documentation |
+| **Resolved Addresses** | Hostnames discovered from DNS/DHCP/etc. in the capture | Quick host name map without live DNS lookups |
+| **Protocol Hierarchy** | Percentage of packets/bytes per protocol | Spot odd protocols (e.g. unexpected Telnet, huge DNS, ICMP) |
+| **Conversations** | Pairs of endpoints (Ethernet, IPv4, TCP, UDP) with packets, bytes, duration | Find top talkers, long sessions, scans (many short conversations from one IP) |
+| **Endpoints** | Individual hosts/ports with totals | Which IPs sent/received the most; geolocation if configured |
+| **Packet Lengths** | Distribution of frame sizes | Detect uniform tiny packets (beaconing) or huge ones |
+| **I/O Graphs** | Traffic over time, with filters per line | See spikes, periodic beaconing, exfil bursts; compare different filters |
+| **Flow Graph** | Sequence diagram of packets between hosts | Visualize handshakes, protocol exchanges |
+| **TCP Stream Graphs** | Time-sequence (Stevens, tcptrace), throughput, RTT, window scaling | Diagnose slowness and retransmissions |
+| **HTTP > Requests / Packet Counter / Load Distribution** | Requested hosts/URIs, response codes, counts | Summarize web activity |
+| **DNS** | Query/response counts, types, rcodes | Detect DGA, tunneling, errors |
+| **IPv4 / IPv6 Statistics** | Sources, destinations, protocol types, ports | Top destinations/ports overview |
+| **DHCP (BOOTP)** | DHCP message counts | Spot rogue servers, floods |
+| **Service Response Time** | Request/response latency for specific protocols (SMB, DNS...) | Performance issues |
+| **UDP Multicast Streams** | Multicast flows | Streaming/discovery traffic |
+
+### Fast triage using Statistics
+
+1. **Capture File Properties**: duration, count, hash.
+2. **Protocol Hierarchy**: anything unexpected?
+3. **Conversations > TCP/UDP**: sort by **Bytes** (exfil?), **Packets**, and **Duration** (long-lived C2?).
+4. **Endpoints > IPv4**: top talkers; uncommon external IPs.
+5. **DNS** and **HTTP > Requests**: list domains and URLs visited.
+6. **I/O Graph**: look for regular spikes (beaconing) or large bursts.
+
+### I/O Graph tips
+
+* Add multiple graphs with different display filters (e.g. `dns`, `http`, `tcp.analysis.retransmission`).
+* Y axis can be Packets, Bytes, or Bits per interval; change **interval** (1s, 10s, 1min) to reveal patterns.
+* Right-click a graph point to jump to that packet.
+* Beaconing appears as evenly spaced small spikes to the same destination.
+
+---
+
+# Part 3: Advanced
+
+## 12. Expert Information and TCP Analysis
+
+### Expert Info (Analyze > Expert Information, or status bar circle)
+
+Severity levels:
+
+| Level | Color | Meaning |
+|---|---|---|
+| **Error** | Red | Serious problem (malformed packets, bad checksums) |
+| **Warning** | Yellow | Unusual or problematic (retransmissions, zero window, resets) |
+| **Note** | Cyan | Noteworthy (duplicate ACKs, keep-alives) |
+| **Chat** | Blue | Normal workflow info (connection open/close) |
+
+Tabs group by severity, summary, and protocol. Click an entry to jump to the packet.
+
+### TCP analysis flags (what each means)
+
+| Flag | Meaning | Likely cause |
+|---|---|---|
+| **Retransmission** | Same segment sent again after a timeout | Packet loss, congestion, dead host |
+| **Fast retransmission** | Resent after duplicate ACKs | Packet loss |
+| **Duplicate ACK** | Receiver acknowledged same seq repeatedly | Missing/out-of-order segment |
+| **Out-of-order** | Segment arrived out of sequence | Multiple paths, reordering |
+| **Previous segment not captured / Lost segment** | Gap in sequence numbers | Capture drop or real loss; check capture point |
+| **ACKed unseen segment** | ACK for data you never captured | Capture missed packets |
+| **Zero window** | Receiver buffer full | Slow application/receiver |
+| **Window full** | Sender filled receiver's window | Receiver slow |
+| **Window update** | Window size changed | Normal recovery |
+| **Keep-alive** | Probe to maintain connection | Normal idle behavior |
+| **Reused ports** | Same 4-tuple reused | Fast reconnects, scans |
+| **RST** | Connection reset | Closed port, firewall, abnormal terminate |
+
+### TCP handshake and sequence numbers
+
+* Handshake: `SYN` → `SYN, ACK` → `ACK`.
+* Wireshark shows **relative** sequence numbers by default (starting at 0). Turn off in Preferences > Protocols > TCP > "Relative sequence numbers" to see raw numbers.
+* **Bytes in flight**, **window size**, and **RTT** appear in the TCP section of packet details.
+
+### Network troubleshooting patterns
+
+| Symptom | What to look for |
+|---|---|
+| "Network is slow" | Retransmissions, high `tcp.time_delta`, zero window, high RTT in TCP Stream Graphs |
+| Page won't load | SYN with no SYN/ACK (blocked), RST after SYN (closed), DNS failures |
+| Intermittent drops | Retransmissions bursts, duplicate ACKs, ICMP unreachable |
+| DNS issues | `dns.flags.rcode != 0`, queries without responses, slow DNS response time |
+| TLS failures | `tls.alert_message`, handshake that stops after Client Hello |
+| Duplicate IP | `arp.duplicate-address-detected` |
+| Wrong MTU/fragmentation | ICMP "fragmentation needed" (type 3 code 4), fragmented IP |
+
+---
+
+## 13. Protocol Quick Reference
+
+### Common ports
+
+| Port | Protocol | Notes |
+|---|---|---|
+| 20/21 | FTP | Cleartext creds |
+| 22 | SSH | Encrypted |
+| 23 | Telnet | Cleartext |
+| 25 / 587 / 465 | SMTP | Mail submission |
+| 53 | DNS | UDP mostly, TCP for large responses/zone transfers |
+| 67/68 | DHCP | UDP |
+| 80 | HTTP | Cleartext web |
+| 88 | Kerberos | AD |
+| 110 / 143 | POP3 / IMAP | Cleartext mail |
+| 123 | NTP | UDP |
+| 135 | MS-RPC | Windows |
+| 137-139 | NetBIOS | Legacy Windows |
+| 161/162 | SNMP | UDP |
+| 389 / 636 | LDAP / LDAPS | Directory |
+| 443 | HTTPS | TLS |
+| 445 | SMB | File sharing |
+| 3389 | RDP | Remote Desktop |
+| 5353 | mDNS | Local discovery |
+| 5355 | LLMNR | Local name resolution |
+| 5985/5986 | WinRM | Windows remote mgmt |
+
+### Key flows to recognize
+
+**DNS lookup**
+
+```text
+Client -> DNS server   Standard query A www.example.com
+DNS server -> Client   Standard query response A 93.184.216.34
+```
+
+**HTTP request**
+
+```text
+TCP handshake -> GET /index.html HTTP/1.1 -> 200 OK (+ body) -> FIN/ACK
+```
+
+**HTTPS**
+
+```text
+TCP handshake -> Client Hello (SNI) -> Server Hello -> (Certificate in TLS 1.2) -> key exchange -> Encrypted Application Data
+```
+
+**DHCP (DORA)**
+
+```text
+Discover (broadcast) -> Offer -> Request -> Acknowledge
+```
+
+**ARP**
+
+```text
+"Who has 192.168.1.1? Tell 192.168.1.50"  -> "192.168.1.1 is at aa:bb:cc:dd:ee:ff"
+```
+
+**SMB session (simplified)**
+
+```text
+Negotiate -> Session Setup (NTLM/Kerberos auth) -> Tree Connect (\\host\share) -> Create/Read/Write file ops
+```
+
+**Kerberos**
+
+```text
+AS-REQ/AS-REP (get TGT) -> TGS-REQ/TGS-REP (get service ticket) -> AP-REQ (use service)
+```
+
+---
+
+## 14. TLS and Decryption
+
+Without keys you can still see: IPs, ports, SNI, certificate details (TLS 1.2), cipher suites, JA3 fingerprints, packet sizes, timing, and handshake failures. You **cannot** see the content.
+
+### Decrypting TLS in a lab
+
+**Method 1: Session key log (works with PFS and TLS 1.3, preferred)**
+
+1. Set an environment variable before launching the browser/client:
+   * Linux/macOS: `export SSLKEYLOGFILE=$HOME/sslkeys.log`
+   * Windows: set system/user environment variable `SSLKEYLOGFILE`
+2. Browse; the client writes keys to the file.
+3. In Wireshark: Edit > Preferences > Protocols > **TLS** > **(Pre)-Master-Secret log filename** > select the file.
+4. Use **Follow TLS Stream** or view decrypted data in the packet bytes pane (a decrypted TLS tab appears).
+
+**Method 2: Server RSA private key**
+
+* Only works if the cipher suite used **RSA key exchange** (not ECDHE/DHE, so rarely works on modern traffic).
+* Preferences > Protocols > TLS > RSA keys list.
+
+### Other decryption
+
+| Case | Notes |
+|---|---|
+| **WPA2 Wi-Fi** | Needs the passphrase/PSK **and** a capture of the 4-way handshake. Preferences > Protocols > IEEE 802.11 > Decryption keys |
+| SMB3 encrypted | Needs session keys |
+| SSH | Encrypted; no practical decryption without keys |
+| RDP | Typically TLS or NLA wrapped; needs keys |
+
+### Analyst note
+
+Real-world malware traffic is mostly TLS. You'll rely on **metadata**: SNI, certificate subject/issuer/validity, self-signed certs, unusual ports, JA3/JA4-style fingerprints compared against threat intel, connection timing/beaconing, and traffic volume.
+
+---
+
